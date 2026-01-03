@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FemTube - Главная</title>
+    <!-- Подключаем стили (Tailwind) и базу (Supabase) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        /* Плавное появление кнопки удаления */
+        .video-card .delete-btn { opacity: 0; transition: opacity 0.2s; }
+        .video-card:hover .delete-btn { opacity: 1; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+    <!-- Шапка сайта -->
+    <nav class="bg-white border-b sticky top-0 z-50 px-4 py-3 flex justify-between items-center shadow-sm">
+        <h1 class="text-xl font-bold text-red-600 flex items-center gap-2 cursor-pointer" onclick="location.reload()">
+            <span class="bg-red-600 text-white px-2 py-1 rounded-lg">▶</span> FemTube
+        </h1>
+        <a href="upload.html" class="bg-red-600 text-white px-5 py-2 rounded-full font-medium hover:bg-red-700 transition shadow-md">
+            + Добавить видео
+        </a>
+    </nav>
+
+    <!-- Основной контент -->
+    <main class="max-w-7xl mx-auto p-6">
+        <!-- Сетка видео -->
+        <div id="videoGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <!-- Сюда код будет вставлять видеокарточки -->
+        </div>
+
+        <!-- Сообщение если пусто -->
+        <div id="emptyState" class="hidden text-center py-20">
+            <div class="text-6xl mb-4">📺</div>
+            <h2 class="text-2xl font-bold text-gray-700">Видео пока нет</h2>
+            <p class="text-gray-500 mt-2">Будь первым, кто загрузит контент на платформу!</p>
+        </div>
+    </main>
+
+    <script>
+        // === НАСТРОЙКИ (ЗАМЕНИ НА СВОИ) ===
+        const SUPABASE_URL = 'https://yxrvnhytthnsywxxscql.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4cnZuaHl0dGhuc3l3eHhzY3FsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0NTk5NDksImV4cCI6MjA4MzAzNTk0OX0.0LlOI9ttjq-TK3nbVp6j9IVplLBw2tkToR9tESBT8O0';
+        const ADMIN_PASSWORD = "SammyAdminAbuseKarapuse"; // Твой пароль для удаления
+
+        // Инициализация клиента
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // Функция для загрузки видео с сервера
+        async function loadVideos() {
+            try {
+                const grid = document.getElementById('videoGrid');
+                const empty = document.getElementById('emptyState');
+
+                // 1. Получаем данные из таблицы 'videos'
+                const { data: videos, error } = await supabaseClient
+                    .from('videos')
+                    .select('*')
+                    .order('id', { ascending: false });
+
+                if (error) throw error;
+
+                // 2. Если видео нет — показываем пустой экран
+                if (!videos || videos.length === 0) {
+                    grid.innerHTML = '';
+                    empty.classList.remove('hidden');
+                    return;
+                }
+
+                empty.classList.add('hidden');
+                grid.innerHTML = ''; // Очищаем сетку перед отрисовкой
+
+                // 3. Создаем карточку для каждого видео
+                videos.forEach(video => {
+                    // Извлекаем имя файла из ссылки (нужно для удаления из Storage)
+                    const fileName = video.video_url.split('/').pop();
+
+                    grid.innerHTML += `
+                        <div class="video-card bg-white rounded-xl shadow-sm border overflow-hidden relative group transition hover:shadow-md">
+                            
+                            <!-- Кнопка удаления (только для админа) -->
+                            <button onclick="deleteVideo('${video.id}', '${fileName}')" 
+                                    class="delete-btn absolute top-2 right-2 bg-black/60 hover:bg-red-600 text-white w-8 h-8 rounded-full flex items-center justify-center z-10">
+                                🗑
+                            </button>
+
+                            <!-- Плеер -->
+                            <div class="aspect-video bg-black">
+                                <video src="${video.video_url}" controls class="w-full h-full"></video>
+                            </div>
+
+                            <!-- Инфо -->
+                            <div class="p-3">
+                                <h3 class="font-bold text-gray-900 line-clamp-2 leading-tight">${video.title}</h3>
+                                <p class="text-gray-500 text-xs mt-2 flex items-center gap-1">
+                                    <span class="w-2 h-2 bg-green-500 rounded-full"></span> Доступно публично
+                                </p>
+                            </div>
+                        </div>
+                    `;
+                });
+
+            } catch (err) {
+                console.error("Ошибка загрузки:", err);
+                alert("Не удалось загрузить видео. Проверь консоль (F12).");
+            }
+        }
+
+        // Функция удаления
+        async function deleteVideo(id, fileName) {
+            // Спрашиваем пароль
+            const pass = prompt("Введите пароль админа для удаления:");
+            if (pass !== ADMIN_PASSWORD) return alert("Неверный пароль!");
+
+            if (!confirm("Удалить это видео навсегда?")) return;
+
+            try {
+                // 1. Удаляем из таблицы
+                const { error: dbError } = await supabaseClient
+                    .from('videos')
+                    .delete()
+                    .eq('id', id);
+
+                if (dbError) throw dbError;
+
+                // 2. Удаляем сам файл из хранилища (Storage)
+                const { error: storageError } = await supabaseClient.storage
+                    .from('media')
+                    .remove([fileName]);
+
+                // 3. Обновляем список на экране
+                alert("Видео удалено");
+                loadVideos();
+
+            } catch (err) {
+                console.error("Ошибка при удалении:", err);
+                alert("Ошибка удаления: " + err.message);
+            }
+        }
+
+        // Запуск при открытии страницы
+        loadVideos();
+    </script>
+
+</body>
+</html>

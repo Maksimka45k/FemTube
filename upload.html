@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Загрузить видео</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-100 p-10">
+    <div class="max-w-md mx-auto bg-white p-8 rounded-lg shadow">
+        <h1 class="text-2xl font-bold mb-6">Загрузка видео</h1>
+        
+        <input type="text" id="title" placeholder="Название видео" class="w-full border p-2 mb-4 rounded">
+        <label class="block mb-2 text-sm">Выберите видеофайл:</label>
+        <input type="file" id="videoFile" accept="video/*" class="mb-4">
+        
+        <button onclick="uploadVideo()" id="uploadBtn" class="w-full bg-red-600 text-white p-2 rounded hover:bg-red-700">
+            Опубликовать
+        </button>
+        
+        <p id="status" class="mt-4 text-sm text-blue-600"></p>
+    </div>
+
+    <script>
+        // ЗАМЕНИ ЭТИ ДАННЫЕ НА СВОИ ИЗ SUPABASE
+        const SUPABASE_URL = 'https://yxrvnhytthnsywxxscql.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl4cnZuaHl0dGhuc3l3eHhzY3FsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc0NTk5NDksImV4cCI6MjA4MzAzNTk0OX0.0LlOI9ttjq-TK3nbVp6j9IVplLBw2tkToR9tESBT8O0';
+
+        // МЫ ПЕРЕИМЕНОВАЛИ ПЕРЕМЕННУЮ В supabaseClient
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+ 
+        async function uploadVideo() {
+    const fileInput = document.getElementById('videoFile');
+    const file = fileInput.files[0];
+    const title = document.getElementById('title').value;
+    const status = document.getElementById('status');
+    const btn = document.getElementById('uploadBtn');
+
+    if (!file || !title) return alert("Заполни все поля");
+
+    btn.disabled = true;
+    status.innerText = "Загрузка файла...";
+
+    try {
+        // Генерируем БЕЗОПАСНОЕ имя файла без русских букв
+        const fileExtension = file.name.split('.').pop();
+        const fileName = `${Date.now()}.${fileExtension}`;
+        
+        // 1. Загрузка в Storage
+        const { data: storageData, error: storageError } = await supabaseClient.storage
+            .from('media')
+            .upload(fileName, file);
+
+        if (storageError) throw storageError;
+
+        // 2. Получаем ссылку
+        const { data: urlData } = supabaseClient.storage.from('media').getPublicUrl(fileName);
+        const videoUrl = urlData.publicUrl;
+
+        status.innerText = "Сохранение в базу...";
+
+        // 3. Запись в таблицу
+        const { error: dbError } = await supabaseClient
+            .from('videos')
+            .insert([{ title: title, video_url: videoUrl }]);
+
+        if (dbError) throw dbError;
+
+        status.innerText = "Готово!";
+        setTimeout(() => window.location.href = 'index.html', 2000);
+
+    } catch (err) {
+        console.error("ПОЛНАЯ ОШИБКА:", err);
+        alert("Ошибка: " + (err.message || "Проверь консоль"));
+    } finally {
+        btn.disabled = false;
+    }
+}
+    </script>
+</body>
+</html>
